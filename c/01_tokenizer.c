@@ -4,25 +4,28 @@
 #include "01_tokenizer.h"
 
 // ============================================================
-// GLOBAL STATE (defined here)
+// GLOBAL STATE
 // ============================================================
 
-// The token sequence (starts as bytes 0-255, grows with merges)
+// Array of token IDs (starts as bytes 0-255, new tokens added as we merge)
 uint32_t* tokens = NULL;
+
+// How many tokens in the array
 uint32_t tokens_len = 0;
 
-// Hash table for pair counts
-// Key: pair (left, right)
-// Value: count of occurrences
+// Hash table to count how many times each pair appears
 PairEntry* pair_table = NULL;
+
+// Size of the hash table
 uint32_t pair_table_size = 0;
 
-// List of merges performed in order
-// Each merge: (pair) -> new_token
+// List of merges we performed (pair -> new token)
 Merge* merges = NULL;
+
+// How many merges we did
 uint32_t merges_len = 0;
 
-// Target vocabulary size (256 base + num_merges)
+// Target vocabulary size (256 bytes + number of merges)
 uint32_t vocab_size = 256;
 
 // ============================================================

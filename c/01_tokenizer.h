@@ -5,42 +5,48 @@
 // DATA STRUCTURES
 // ============================================================
 
-// A pair of adjacent tokens
+// A pair of two adjacent tokens
 typedef struct {
-    uint32_t left;
-    uint32_t right;
+    uint32_t left;   // First token
+    uint32_t right;  // Second token
 } Pair;
 
-// Hash table entry for counting pairs
+// One entry in the hash table
 typedef struct {
-    Pair pair;
-    uint32_t count;
-    uint8_t used;
+    Pair pair;       // The pair we are counting
+    uint32_t count;  // How many times this pair appears
+    uint8_t used;    // 1 if this slot is used, 0 if empty
 } PairEntry;
 
-// Merge record (which pair became which token)
+// One merge operation
 typedef struct {
-    Pair pair;
-    uint32_t new_token;
+    Pair pair;          // The pair we merged
+    uint32_t new_token; // The new token ID it became
 } Merge;
 
 // ============================================================
 // GLOBAL STATE
 // ============================================================
 
-// The token sequence (starts as bytes, gets merged)
+// Array of token IDs (starts as bytes 0-255, new tokens added as we merge)
 extern uint32_t* tokens;
+
+// How many tokens in the array
 extern uint32_t tokens_len;
 
-// Hash table for pair counts
+// Hash table to count how many times each pair appears
 extern PairEntry* pair_table;
+
+// Size of the hash table
 extern uint32_t pair_table_size;
 
-// List of merges performed
+// List of merges we performed (pair -> new token)
 extern Merge* merges;
+
+// How many merges we did
 extern uint32_t merges_len;
 
-// Vocabulary size target
+// Target vocabulary size (256 bytes + number of merges)
 extern uint32_t vocab_size;
 
 // ============================================================
