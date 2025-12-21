@@ -35,12 +35,15 @@ uint32_t vocab_size = 256;
 // ============================================================
 
 int tokenizer_init(void) {
-    printf("Tokenizer started\n");
+    printf("    C: Tokenizer initialized\n");
+    printf("    C: tokens[] array ready (starts empty)\n");
     return 0;
 }
 
 // Load text and convert to bytes (initial tokens)
 void load_text(const char* text, size_t len) {
+    uint32_t old_len = tokens_len;
+    
     // Reallocate tokens array to fit new bytes
     tokens = realloc(tokens, (tokens_len + len) * sizeof(uint32_t));
     
@@ -50,4 +53,7 @@ void load_text(const char* text, size_t len) {
     }
     
     tokens_len += (uint32_t)len;
+    
+    // Print progress every time
+    printf("           C: Added %zu bytes -> tokens[%u..%u]\n", len, old_len, tokens_len - 1);
 }
