@@ -1,0 +1,11 @@
+# Python dependencies for Cuaunanochat tokenizer
+
+# For reading parquet data files
+pyarrow>=14.0.0
+
+# For Unicode regex pattern matching (GPT-4 style pre-tokenization)
+regex>=2023.0.0
+
+# For building C extensions (used by scripts/build.py)
+cffi>=1.16.0
+

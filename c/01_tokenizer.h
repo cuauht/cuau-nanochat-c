@@ -57,3 +57,27 @@ int tokenizer_init(void);
 
 // Load text and convert to bytes (initial tokens)
 void load_text(const char* text, size_t len);
+
+// Count all pairs and find the most frequent one
+Pair count_pairs(void);
+
+// Merge a pair into a new token, returns count of occurrences merged
+uint32_t merge_pair(Pair pair, uint32_t new_token);
+
+// Run one merge iteration (count -> find max -> merge)
+int do_one_merge(void);
+
+// Run multiple merges with checkpoint printing
+void do_merges(uint32_t num_merges);
+
+// Get current tokens length
+uint32_t get_tokens_len(void);
+
+// Get first N tokens (for display)
+void get_first_tokens(uint32_t n, uint32_t* out);
+
+// Get the string representation of a token
+const char* get_token_string(uint32_t token);
+
+// Get merge token at index i (merges are in frequency order)
+uint32_t get_merge_token(uint32_t i);

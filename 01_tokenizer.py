@@ -55,10 +55,38 @@
 import sys
 sys.path.insert(0, "_generated")
 import pyarrow.parquet as pq
+import argparse
+import regex  # pip install regex (supports Unicode patterns)
 
-from _tokenizer import lib
+from _tokenizer import lib, ffi
 
+# GPT-4 style pattern - splits text into words, numbers, punctuation
+# This prevents tokens from crossing word boundaries!
+SPLIT_PATTERN = regex.compile(
+    r"""'(?i:[sdmt]|ll|ve|re)|[^\r\n\p{L}\p{N}]?+\p{L}+|\p{N}{1,2}| ?[^\s\p{L}\p{N}]++[\r\n]*|\s*[\r\n]|\s+(?!\S)|\s+"""
+)
+
+# Parse command line arguments FIRST - so we know what we're running
+parser = argparse.ArgumentParser(description='Train BPE tokenizer')
+parser.add_argument('--vocabsize', type=int, default=10000, help='Target vocabulary size (default: 10000)')
+args = parser.parse_args()
+
+target_vocab = args.vocabsize
+num_merges = target_vocab - 256  # Subtract base 256 tokens
+
+# Print configuration at the very top
 print("="*60)
+print(f"TOKENIZER CONFIGURATION:")
+print(f"  Target vocabulary size: {target_vocab:,}")
+print(f"  Number of merges to perform: {num_merges:,}")
+print(f"  (Base tokens: 256, Merges: {num_merges:,})")
+print("="*60)
+
+if num_merges <= 0:
+    print("Error: vocab_size must be > 256")
+    sys.exit(1)
+
+print("\n" + "="*60)
 print("STEP 1: TOKENIZER - LOADING DATA")
 print("="*60)
 
@@ -84,26 +112,63 @@ print("-"*60)
 
 num_loaded = 0
 total_bytes = 0
+total_chunks = 0
+
 for i, text in enumerate(texts[:10]):  # Start with first 10 docs
     text_str = str(text)[:10000]  # Cap at 10k chars
-    text_bytes = text_str.encode('utf-8')
+    
+    # PRE-TOKENIZE: Split into chunks using GPT-4 pattern
+    # This prevents tokens from crossing word boundaries!
+    chunks = SPLIT_PATTERN.findall(text_str)
     
     # Show first 50 chars of each document
     preview = text_str[:50].replace('\n', ' ')
-    print(f"    Doc {i}: {len(text_bytes):,} bytes | '{preview}...'")
+    print(f"    Doc {i}: {len(chunks):,} chunks | '{preview}...'")
     
-    # Show first 10 bytes as token IDs with their characters
-    first_bytes = list(text_bytes[:10])
-    tokens_str = ", ".join([f"{b}='{chr(b) if 32 <= b <= 126 else '?'}'" for b in first_bytes])
-    print(f"           First 10 tokens: {tokens_str}")
+    # Load each chunk separately, with NULL byte separator between them
+    for chunk in chunks:
+        chunk_bytes = chunk.encode('utf-8')
+        lib.load_text(chunk_bytes, len(chunk_bytes))
+        total_bytes += len(chunk_bytes)
+        # Add separator (NULL byte) so pairs can't cross chunk boundaries
+        lib.load_text(b'\x00', 1)
     
-    lib.load_text(text_bytes, len(text_bytes))
+    total_chunks += len(chunks)
     num_loaded += 1
-    total_bytes += len(text_bytes)
 
 print("-"*60)
 print(f"\n[5] SUMMARY:")
 print(f"    - Documents loaded: {num_loaded}")
-print(f"    - Total bytes (tokens): {total_bytes:,}")
-print(f"    - Each byte (0-255) is an initial token")
+print(f"    - Total chunks (pre-tokenized): {total_chunks:,}")
+print(f"    - Total bytes: {total_bytes:,}")
+print(f"    - Chunks are separated by NULL bytes (prevents cross-word merging)")
+print("="*60)
+
+# Now do BPE merges
+print("\n" + "="*60)
+print("STEP 2: BPE MERGING")
+print("="*60)
+print(f"\n[6] Performing {num_merges} merges (target vocab: {target_vocab})...")
+print("-"*60)
+
+# Do all merges with checkpoint printing
+lib.do_merges(num_merges)
+
+print("\n" + "="*60)
+print("FINAL STATS:")
+print("="*60)
+print(f"    - Total merges: {num_merges}")
+print(f"    - Final vocab size: {target_vocab}")
+print(f"    - Final tokens length: {lib.get_tokens_len():,}")
+
+# Show first 100 merged tokens (these are in FREQUENCY ORDER - most common pairs first)
+print(f"\n    First 100 MERGES (in order of frequency):")
+print(f"    (Token 256 = most common pair, 257 = second most common, etc.)")
+for i in range(min(100, num_merges)):
+    token = lib.get_merge_token(i)
+    token_str = ffi.string(lib.get_token_string(token)).decode('utf-8', errors='replace')
+    # Show printable version (replace non-printable chars with markers)
+    display_str = ''.join(c if 32 <= ord(c) <= 126 else '_' for c in token_str[:20])
+    print(f"      Merge {i+1}: token{token}='{display_str}'")
+
 print("="*60)
