@@ -1,0 +1,21 @@
+# Build: compiles C modules into Python
+import os
+from pathlib import Path
+from cffi import FFI
+
+def build():
+    root = Path(__file__).parent.parent
+    gen_dir = root / "_generated"
+    gen_dir.mkdir(exist_ok=True)
+    os.chdir(gen_dir)
+    
+    ffi = FFI()
+    ffi.cdef("int tokenizer_init(void);")
+    ffi.set_source("_tokenizer", '#include "tokenizer.h"',
+                   sources=["../c/tokenizer.c"],
+                   include_dirs=["../c"])
+    ffi.compile(verbose=True)
+
+if __name__ == "__main__":
+    build()
+
