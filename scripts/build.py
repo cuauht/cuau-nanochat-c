@@ -11,8 +11,8 @@ def build():
     
     ffi = FFI()
     ffi.cdef("int tokenizer_init(void);")
-    ffi.set_source("_tokenizer", '#include "tokenizer.h"',
-                   sources=["../c/tokenizer.c"],
+    ffi.set_source("_tokenizer", '#include "01_tokenizer.h"',
+                   sources=["../c/01_tokenizer.c"],
                    include_dirs=["../c"])
     ffi.compile(verbose=True)
 

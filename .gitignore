@@ -1,3 +1,6 @@
 # Generated (ignore)
 _generated/
 __pycache__/
+
+# Dataset (download manually, too large for git)
+data/
