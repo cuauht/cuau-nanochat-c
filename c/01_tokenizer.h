@@ -54,3 +54,6 @@ extern uint32_t vocab_size;
 // ============================================================
 
 int tokenizer_init(void);
+
+// Load text and convert to bytes (initial tokens)
+void load_text(const char* text, size_t len);

@@ -1,6 +1,8 @@
 // 01_tokenizer.c - Tokenizer implementation
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
+#include <stddef.h>
 #include "01_tokenizer.h"
 
 // ============================================================
@@ -34,9 +36,18 @@ uint32_t vocab_size = 256;
 
 int tokenizer_init(void) {
     printf("Tokenizer started\n");
-    printf("Data structures ready:\n");
-    printf("  - tokens[]\n");
-    printf("  - pair_table[]\n");
-    printf("  - merges[]\n");
     return 0;
+}
+
+// Load text and convert to bytes (initial tokens)
+void load_text(const char* text, size_t len) {
+    // Reallocate tokens array to fit new bytes
+    tokens = realloc(tokens, (tokens_len + len) * sizeof(uint32_t));
+    
+    // Convert each byte to a token (0-255)
+    for (size_t i = 0; i < len; i++) {
+        tokens[tokens_len + i] = (uint8_t)text[i];
+    }
+    
+    tokens_len += (uint32_t)len;
 }

@@ -10,7 +10,10 @@ def build():
     os.chdir(gen_dir)
     
     ffi = FFI()
-    ffi.cdef("int tokenizer_init(void);")
+    ffi.cdef("""
+        int tokenizer_init(void);
+        void load_text(const char* text, size_t len);
+    """)
     ffi.set_source("_tokenizer", '#include "01_tokenizer.h"',
                    sources=["../c/01_tokenizer.c"],
                    include_dirs=["../c"])

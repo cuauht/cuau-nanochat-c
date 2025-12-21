@@ -54,7 +54,27 @@
 
 import sys
 sys.path.insert(0, "_generated")
+import pyarrow.parquet as pq
 
 from _tokenizer import lib
 
+# Initialize tokenizer
 lib.tokenizer_init()
+
+# Load dataset
+parquet_file = "data/shard_00000.parquet"
+pf = pq.ParquetFile(parquet_file)
+
+# Read first row group and extract text
+rg = pf.read_row_group(0)
+texts = rg.column('text').to_pylist()
+
+# Load each document (cap at 10,000 chars)
+num_loaded = 0
+for text in texts[:10]:  # Start with first 10 docs
+    text_str = str(text)[:10000]  # Cap at 10k chars
+    text_bytes = text_str.encode('utf-8')
+    lib.load_text(text_bytes, len(text_bytes))
+    num_loaded += 1
+
+print(f"Loaded {num_loaded} documents")
