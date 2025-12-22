@@ -57,6 +57,7 @@ sys.path.insert(0, "_generated")
 import pyarrow.parquet as pq
 import argparse
 import regex  # pip install regex (supports Unicode patterns)
+from collections import Counter  # For counting unique chunks!
 
 from _tokenizer import lib, ffi
 
@@ -69,17 +70,19 @@ SPLIT_PATTERN = regex.compile(
 # Parse command line arguments FIRST - so we know what we're running
 parser = argparse.ArgumentParser(description='Train BPE tokenizer')
 parser.add_argument('--vocabsize', type=int, default=10000, help='Target vocabulary size (default: 10000)')
+parser.add_argument('--docs', type=int, default=100, help='Number of documents to process (default: 100)')
 args = parser.parse_args()
 
 target_vocab = args.vocabsize
+num_docs = args.docs
 num_merges = target_vocab - 256  # Subtract base 256 tokens
 
 # Print configuration at the very top
 print("="*60)
 print(f"TOKENIZER CONFIGURATION:")
 print(f"  Target vocabulary size: {target_vocab:,}")
+print(f"  Number of documents: {num_docs:,}")
 print(f"  Number of merges to perform: {num_merges:,}")
-print(f"  (Base tokens: 256, Merges: {num_merges:,})")
 print("="*60)
 
 if num_merges <= 0:
@@ -104,55 +107,95 @@ print(f"    - Number of row groups: {pf.num_row_groups}")
 print(f"\n[3] Reading row group 0...")
 rg = pf.read_row_group(0)
 texts = rg.column('text').to_pylist()
+total_docs_available = len(texts) * pf.num_row_groups  # Approximate total
 print(f"    - Documents in this row group: {len(texts)}")
+print(f"    - Total documents available (approx): {total_docs_available:,} ({pf.num_row_groups} row groups × {len(texts)} docs)")
+print(f"    - We will process: {min(num_docs, len(texts)):,} documents")
 
-# Load each document (cap at 10,000 chars)
-print(f"\n[4] Loading documents into C tokenizer...")
+# ============================================================
+# NEW SMART APPROACH: Count unique chunks, load each once!
+# ============================================================
+#
+# OLD WAY: Load " the" 50,000 times → slow!
+# NEW WAY: Count " the" appears 50,000 times, load once with count
+#
+
+print(f"\n[4] Pre-tokenizing documents (splitting into chunks)...")
 print("-"*60)
 
+# Step 4a: Split all documents into chunks and COUNT them
+chunk_counter = Counter()  # This counts how many times each chunk appears
 num_loaded = 0
-total_bytes = 0
-total_chunks = 0
+total_raw_chunks = 0
 
-for i, text in enumerate(texts[:10]):  # Start with first 10 docs
+for i, text in enumerate(texts[:num_docs]):  # Process num_docs documents
     text_str = str(text)[:10000]  # Cap at 10k chars
     
     # PRE-TOKENIZE: Split into chunks using GPT-4 pattern
-    # This prevents tokens from crossing word boundaries!
     chunks = SPLIT_PATTERN.findall(text_str)
     
-    # Show first 50 chars of each document
-    preview = text_str[:50].replace('\n', ' ')
-    print(f"    Doc {i}: {len(chunks):,} chunks | '{preview}...'")
+    # Count each chunk (this is the magic!)
+    # If " the" appears 100 times, Counter remembers: {" the": 100}
+    chunk_counter.update(chunks)
     
-    # Load each chunk separately, with NULL byte separator between them
-    for chunk in chunks:
-        chunk_bytes = chunk.encode('utf-8')
-        lib.load_text(chunk_bytes, len(chunk_bytes))
-        total_bytes += len(chunk_bytes)
-        # Add separator (NULL byte) so pairs can't cross chunk boundaries
-        lib.load_text(b'\x00', 1)
+    # Show progress (only first 5, last 2, and every 100th)
+    if i < 5 or i >= num_docs - 2 or (i + 1) % 100 == 0:
+        preview = text_str[:50].replace('\n', ' ')
+        print(f"    Doc {i}: {len(chunks):,} chunks | '{preview}...'")
+    elif i == 5:
+        print(f"    ... (processing {num_docs - 7} more documents) ...")
     
-    total_chunks += len(chunks)
+    total_raw_chunks += len(chunks)
     num_loaded += 1
 
 print("-"*60)
-print(f"\n[5] SUMMARY:")
-print(f"    - Documents loaded: {num_loaded}")
-print(f"    - Total chunks (pre-tokenized): {total_chunks:,}")
+print(f"\n[5] CHUNK COUNTING RESULTS:")
+print(f"    - Documents processed: {num_loaded}")
+print(f"    - Total chunks found: {total_raw_chunks:,}")
+print(f"    - UNIQUE chunks: {len(chunk_counter):,}")
+print(f"    - Duplicates avoided: {total_raw_chunks - len(chunk_counter):,}")
+print(f"")
+print(f"    This means we scan {len(chunk_counter):,} chunks instead of {total_raw_chunks:,}!")
+print(f"    That's {total_raw_chunks / max(1, len(chunk_counter)):.1f}x less work!")
+
+# Show top 10 most common chunks
+print(f"\n    TOP 10 MOST COMMON CHUNKS:")
+print(f"    " + "-"*50)
+for chunk, count in chunk_counter.most_common(10):
+    # Make it printable
+    display = chunk.replace('\n', '\\n')
+    if len(display) > 20:
+        display = display[:20] + "..."
+    print(f"      '{display}' appears {count:,} times")
+
+# Step 4b: Load each UNIQUE chunk into C with its count
+print(f"\n[6] Loading {len(chunk_counter):,} unique chunks into C...")
+print("-"*60)
+
+total_bytes = 0
+for chunk, count in chunk_counter.items():
+    chunk_bytes = chunk.encode('utf-8')
+    lib.load_chunk(chunk_bytes, len(chunk_bytes), count)
+    total_bytes += len(chunk_bytes)
+
+# Show chunk statistics from C
+lib.print_chunk_stats()
+
+print(f"\n[7] LOADING COMPLETE:")
+print(f"    - Unique chunks loaded: {len(chunk_counter):,}")
 print(f"    - Total bytes: {total_bytes:,}")
-print(f"    - Chunks are separated by NULL bytes (prevents cross-word merging)")
+print(f"    - Each chunk stored ONCE with its count (smart!)")
 print("="*60)
 
 # Now do BPE merges
 print("\n" + "="*60)
-print("STEP 2: BPE MERGING")
+print("STEP 2: BPE MERGING (using SMART chunk method!)")
 print("="*60)
-print(f"\n[6] Performing {num_merges} merges (target vocab: {target_vocab})...")
+print(f"\n[8] Performing {num_merges} merges (target vocab: {target_vocab})...")
 print("-"*60)
 
-# Do all merges with checkpoint printing
-lib.do_merges(num_merges)
+# Do all merges using the NEW chunk-based method!
+lib.do_merges_chunks(num_merges)
 
 print("\n" + "="*60)
 print("FINAL STATS:")

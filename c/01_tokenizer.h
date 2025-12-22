@@ -25,6 +25,19 @@ typedef struct {
 } Merge;
 
 // ============================================================
+// NEW: CHUNK - A unique piece of text with its count
+// ============================================================
+// 
+// Instead of storing " the" 50,000 times, we store it ONCE
+// with count=50000. This makes counting pairs much faster!
+//
+typedef struct {
+    uint32_t* tokens;   // The bytes/tokens in this chunk
+    uint32_t len;       // How many tokens in this chunk
+    uint32_t count;     // How many times this chunk appears in the data
+} Chunk;
+
+// ============================================================
 // GLOBAL STATE
 // ============================================================
 
@@ -50,13 +63,37 @@ extern uint32_t merges_len;
 extern uint32_t vocab_size;
 
 // ============================================================
+// NEW: CHUNK STORAGE (the smart way!)
+// ============================================================
+
+// Array of unique chunks
+extern Chunk* chunks;
+
+// How many unique chunks we have
+extern uint32_t num_chunks;
+
+// Total count of all chunks (for statistics)
+extern uint32_t total_chunk_count;
+
+// ============================================================
 // FUNCTIONS
 // ============================================================
 
 int tokenizer_init(void);
 
-// Load text and convert to bytes (initial tokens)
+// Load text and convert to bytes (initial tokens) - OLD METHOD
 void load_text(const char* text, size_t len);
+
+// ============================================================
+// NEW: CHUNK-BASED LOADING (the smart way!)
+// ============================================================
+
+// Add a unique chunk with its count
+// Example: load_chunk(" the", 4, 50000) means " the" appears 50,000 times
+void load_chunk(const char* text, size_t len, uint32_t count);
+
+// Print statistics about loaded chunks
+void print_chunk_stats(void);
 
 // Count all pairs and find the most frequent one
 Pair count_pairs(void);
@@ -69,6 +106,9 @@ int do_one_merge(void);
 
 // Run multiple merges with checkpoint printing
 void do_merges(uint32_t num_merges);
+
+// NEW: Run merges using chunks (the smart way!)
+void do_merges_chunks(uint32_t num_merges);
 
 // Get current tokens length
 uint32_t get_tokens_len(void);
